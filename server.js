@@ -1,26 +1,23 @@
 const express = require('express');
 const cors = require('cors');
-
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 app.use(cors({
   origin: [
     'https://runningx42.github.io',
     'http://localhost',
     'http://localhost:3000',
   ],
-  methods: ['POST'],
+  methods: ['POST', 'OPTIONS'],
 }));
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error('Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET env vars');
   process.exit(1);
 }
 
-// POST /auth/token — exchange code for tokens
 app.post('/auth/token', async (req, res) => {
   const { code, redirect_uri, code_verifier } = req.body;
   if (!code || !redirect_uri || !code_verifier) {
@@ -47,7 +44,6 @@ app.post('/auth/token', async (req, res) => {
   }
 });
 
-// POST /auth/refresh — refresh an expired access token
 app.post('/auth/refresh', async (req, res) => {
   const { refresh_token } = req.body;
   if (!refresh_token) return res.status(400).json({ error: 'Missing refresh_token' });
@@ -67,6 +63,33 @@ app.post('/auth/refresh', async (req, res) => {
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+app.options('/ai/import', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://runningx42.github.io');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'POST');
+  res.sendStatus(204);
+});
+
+app.post('/ai/import', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://runningx42.github.io');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+      },
+      body: JSON.stringify(req.body),
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (e) {
+    res.status(500).json({ error: { message: e.message } });
   }
 });
 
