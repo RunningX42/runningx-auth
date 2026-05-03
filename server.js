@@ -8,7 +8,7 @@ app.use(cors({
     'http://localhost',
     'http://localhost:3000',
   ],
-  methods: ['POST', 'OPTIONS'], 
+  methods: ['POST', 'OPTIONS', 'GET'],
 }));
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
@@ -66,10 +66,10 @@ app.post('/auth/refresh', async (req, res) => {
   }
 });
 
-app.options('/ai/import', (req, res) => {
+app.options('/ai/*', (req, res) => {
   res.header('Access-Control-Allow-Origin', 'https://runningx42.github.io');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
-  res.header('Access-Control-Allow-Methods', 'POST');
+  res.header('Access-Control-Allow-Methods', 'POST, GET');
   res.sendStatus(204);
 });
 
@@ -91,6 +91,21 @@ app.post('/ai/import', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: { message: e.message } });
   }
+});
+
+const _debugLog = [];
+
+app.post('/ai/debug-log', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://runningx42.github.io');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  _debugLog.unshift({ ...req.body, _received: new Date().toISOString() });
+  if (_debugLog.length > 50) _debugLog.length = 50;
+  console.log('[AI debug]', req.body.ts, req.body.fileName, req.body.error || 'no-error');
+  res.json({ ok: true });
+});
+
+app.get('/ai/debug-log', (req, res) => {
+  res.json(_debugLog);
 });
 
 app.get('/health', (_, res) => res.json({ ok: true }));
