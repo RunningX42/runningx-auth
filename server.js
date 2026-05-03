@@ -8,7 +8,7 @@ app.use(cors({
     'http://localhost',
     'http://localhost:3000',
   ],
-  methods: ['POST', 'OPTIONS'],
+  methods: ['POST', 'OPTIONS'], 
 }));
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
