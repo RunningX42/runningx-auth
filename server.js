@@ -1,6 +1,35 @@
-const express = require('express');                                                                                                                        
-const cors = require('cors');                                                                                                                              
-const app = express();                                                                                                                                     
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const app = express();
+
+// ── User settings storage ──────────────────────────────────────────────────────
+const SETTINGS_FILE = process.env.SETTINGS_FILE || '/tmp/runyo-settings.json';
+
+function loadSettings() {
+  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); } catch { return {}; }
+}
+function saveSettings(data) {
+  try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2)); } catch(e) { console.error('Settings write error:', e.message); }
+}
+
+async function validateGoogleToken(authHeader) {
+  const token = (authHeader || '').replace('Bearer ', '').trim();
+  if (!token) return null;
+  try {
+    const r = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${token}`);
+    if (!r.ok) return null;
+    const info = await r.json();
+    return info.email || null;
+  } catch { return null; }
+}
+
+function validateBotToken(authHeader) {
+  const secret = process.env.BOT_SECRET;
+  if (!secret) return false;
+  const token = (authHeader || '').replace('Bearer ', '').trim();
+  return token === secret;
+}                                                                                                                                     
 app.use(express.json({ limit: '20mb' }));                                                                                                                
 app.use(cors({                                                                                                                                             
 origin: [
@@ -102,7 +131,41 @@ app.get('/ai/debug-log', (req, res) => {
 res.json(_debugLog);
 });
 
+// ── Notification settings endpoints ───────────────────────────────────────────
+
+// App → save/update user notification settings (auth: Google token)
+app.post('/user/settings', async (req, res) => {
+  const email = await validateGoogleToken(req.headers.authorization);
+  if (!email) return res.status(401).json({ error: 'Unauthorized' });
+  const { telegramUser, notifications } = req.body;
+  if (!telegramUser) return res.status(400).json({ error: 'Missing telegramUser' });
+  const key = telegramUser.replace(/^@/, '');
+  const settings = loadSettings();
+  settings[key] = { ...(settings[key] || {}), email, telegramUser, notifications };
+  saveSettings(settings);
+  res.json({ ok: true });
+});
+
+// Bot → fetch all user settings (auth: BOT_SECRET)
+app.get('/user/settings', (req, res) => {
+  if (!validateBotToken(req.headers.authorization)) return res.status(401).json({ error: 'Unauthorized' });
+  res.json(loadSettings());
+});
+
+// Bot → register chatId for a telegram user (auth: BOT_SECRET)
+app.post('/bot/register', (req, res) => {
+  if (!validateBotToken(req.headers.authorization)) return res.status(401).json({ error: 'Unauthorized' });
+  const { telegramUser, chatId } = req.body;
+  if (!telegramUser || !chatId) return res.status(400).json({ error: 'Missing fields' });
+  const key = telegramUser.replace(/^@/, '');
+  const settings = loadSettings();
+  if (!settings[key]) settings[key] = { telegramUser };
+  settings[key].chatId = chatId;
+  saveSettings(settings);
+  res.json({ ok: true });
+});
+
 app.get('/health', (_, res) => res.json({ ok: true }));                                                                                                    
 
 const PORT = process.env.PORT || 3000;                                                                                                                     
-app.listen(PORT, () => console.log(`RunningX auth on :${PORT}`));     
+app.listen(PORT, () => console.log(`Runyo auth on :${PORT}`));     
